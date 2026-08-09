@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'aki.sokpah.link@gmail.com' ||
+        request.auth.token.email == 'admin.super@scholarbridge.org' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super_admin', 'content_admin'])
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Scholarships - Publicly readable for directory search
+    match /scholarships/{scholarshipId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Universities - Publicly readable
+    match /universities/{universityId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Organizations - Publicly readable
+    match /organizations/{organizationId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Countries - Publicly readable
+    match /countries/{countryId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      // Subcollection for user saved scholarships
+      match /savedScholarships/{savedId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // Student Reports for content moderation
+    match /reports/{reportId} {
+      allow create: if true;
+      allow read, update, delete: if isSignedIn();
+    }
+
+    // Site Settings
+    match /siteSettings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+  }
+}
